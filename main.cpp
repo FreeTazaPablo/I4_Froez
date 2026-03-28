@@ -4430,6 +4430,13 @@ static void runCommand(BrowserWindow* bw, const std::string& raw) {
     // ─── 77airwaves ──────────────────────────────────────────────────────────
     } else if (cmd == "77airwaves") {
         nav("https://www.youtube.com/watch?v=jsXXKQ_nl30");
+
+    // ─── 15vaporbuster ───────────────────────────────────────────────────────
+    } else if (cmd == "15vaporbuster") {
+        nav("https://www.youtube.com/watch?v=3vh8LYSuOvA");   
+
+    // ─── Incorrect command -──────────────────────────────────────────────────
+
     } else {
         termPrint(bw, "Comando desconocido: '" + cmd + "'  —  escribe 'help'");
     }
