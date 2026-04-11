@@ -1,4 +1,4 @@
-# I4 Froez
+# Neceap
 
 Navegador web de escritorio para Linux enfocado en privacidad, construido con GTK4 y WebKitGTK. Soporta tres modos de red completamente aislados — Clearnet, Tor e I2P — cada uno con su propio perfil cifrado, historial y marcadores independientes.
 
@@ -78,7 +78,7 @@ sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev libssl-dev nlohmann-json3-dev
 ## Compilacion
 
 ```bash
-g++ -std=c++20 main.cpp -o i4froez \
+g++ -std=c++20 main.cpp -o neceap \
     $(pkg-config --cflags --libs gtk4 webkitgtk-6.0 glib-2.0 gio-2.0) \
     -lcrypto
 ```
@@ -88,9 +88,8 @@ g++ -std=c++20 main.cpp -o i4froez \
 ## Uso
 
 ```bash
-./i4froez
+./neceap
 ```
-
 Al iniciar, se mostrara un dialogo para seleccionar el perfil de red. Si es la primera vez que usas ese perfil, se te pedira crear una contrasena maestra. Esta contrasena se solicitara cada vez que abras el navegador.
 
 ---
@@ -100,7 +99,7 @@ Al iniciar, se mostrara un dialogo para seleccionar el perfil de red. Si es la p
 Los datos de cada perfil se almacenan en:
 
 ```
-~/.local/share/i4froez/profiles/
+~/.local/share/neceap/profiles/
 ├── clearnet/
 │   ├── history.json      # Historial cifrado
 │   ├── bookmarks.json    # Marcadores cifrados
@@ -122,6 +121,12 @@ Los datos de cada perfil se almacenan en:
 - Cada perfil tiene su propio salt, por lo que las claves derivadas son independientes entre perfiles aunque la contrasena sea la misma.
 
 ---
+
+## Significado de Neceap
+
+Neceap significa literalmente
+
+# Navegador En C++ Enfocado A Privacidad
 
 ## Creditos
 
