@@ -1,6 +1,6 @@
 /*
- *  Nombre del Proyecto - I4 Froez
- *  Copyright (C) [2026] FreeTazaPablo
+ *  Nombre del Proyecto - NECEAP
+ *  Copyright (C) [2026] NECEAP
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -43,6 +43,9 @@
 #include <cassert>
 #include <memory>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <csignal>
 #include <filesystem>
 #include <unordered_map>
 #include <optional>
@@ -54,9 +57,9 @@ using json = nlohmann::json;
 
 // ─── Identificadores de perfil ────────────────────────────────────────────────
 // Cada modo de red es un perfil completamente independiente:
-//   ~/.local/share/i4froez/profiles/clearnet/
-//   ~/.local/share/i4froez/profiles/tor/
-//   ~/.local/share/i4froez/profiles/i2p/
+//   ~/.local/share/neceap/profiles/clearnet/
+//   ~/.local/share/neceap/profiles/tor/
+//   ~/.local/share/neceap/profiles/i2p/
 // Cada perfil tiene su propio salt, verifier, historial, marcadores y ajustes.
 // La clave maestra en RAM se limpia completamente al cambiar de perfil.
 
@@ -81,7 +84,6 @@ static std::string profileDisplayName(BrowserProfile p) {
     }
 }
 
-// Alias para compatibilidad con el resto del código que usa profileName()
 static std::string profileName(BrowserProfile p) { return profileDirName(p); }
 
 static BrowserProfile profileFromString(const std::string& s) {
@@ -122,7 +124,7 @@ static std::vector<uint8_t> base64_decode(const std::string& s) {
 // ─── Rutas de datos ────────────────────────────────────────────────────────
 
 static std::string dataDir() {
-    return std::string(g_get_home_dir()) + "/.local/share/i4froez";
+    return std::string(g_get_home_dir()) + "/.local/share/neceap";
 }
 // Directorio base para todos los perfiles
 static std::string profilesDir() {
@@ -130,7 +132,7 @@ static std::string profilesDir() {
 }
 // Directorio del perfil activo
 static std::string profileDir(BrowserProfile p) {
-    return profilesDir() + "/" + profileName(p);
+    return profilesDir() + "/" + profileDirName(p);
 }
 static std::string profileDir() { return profileDir(g_activeProfile); }
 
@@ -170,7 +172,7 @@ static std::vector<uint8_t> g_masterKey; // 32 bytes para AES-256
 static std::optional<std::string> askMasterPassword(GtkApplication* app,
                                      const std::string& extraMsg = "") {
     std::string profileLabel = profileDisplayName(g_activeProfile);
-    std::string winTitle = "I4 Froez [" + profileLabel + "] — Contraseña maestra";
+    std::string winTitle = "NECEAP [" + profileLabel + "] — Contraseña maestra";
 
     GtkWidget* dialog = gtk_window_new();
     gtk_window_set_title(GTK_WINDOW(dialog), winTitle.c_str());
@@ -300,7 +302,7 @@ static std::optional<std::string> askMasterPassword(GtkApplication* app,
 // sin almacenar la contraseña ni información sensible.
 
 static void saveVerifier() {
-    const std::string sentinel = "i4froez-auth-ok";
+    const std::string sentinel = "neceap-auth-ok";
     unsigned char hmac[32]; unsigned int hlen = 0;
     HMAC(EVP_sha256(),
          g_masterKey.data(), (int)g_masterKey.size(),
@@ -317,7 +319,7 @@ static bool checkVerifier() {
     std::string b64((std::istreambuf_iterator<char>(f)), {});
     auto stored = base64_decode(b64);
 
-    const std::string sentinel = "i4froez-auth-ok";
+    const std::string sentinel = "neceap-auth-ok";
     unsigned char hmac[32]; unsigned int hlen = 0;
     HMAC(EVP_sha256(),
          g_masterKey.data(), (int)g_masterKey.size(),
@@ -347,7 +349,7 @@ struct ProfileSelBtnCtx {
 // ─── Diálogo de selección de perfil ───────────────────────────────────────
 static BrowserProfile askProfileSelection(GtkApplication* app) {
     GtkWidget* dialog = gtk_window_new();
-    gtk_window_set_title(GTK_WINDOW(dialog), "I4 Froez — Seleccionar perfil");
+    gtk_window_set_title(GTK_WINDOW(dialog), "NECEAP — Seleccionar perfil");
     gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
     gtk_window_set_resizable(GTK_WINDOW(dialog), FALSE);
     gtk_window_set_default_size(GTK_WINDOW(dialog), 420, -1);
@@ -380,7 +382,7 @@ static BrowserProfile askProfileSelection(GtkApplication* app) {
     gtk_widget_set_margin_start (GTK_WIDGET(vbox), 32);
     gtk_widget_set_margin_end   (GTK_WIDGET(vbox), 32);
 
-    GtkLabel* title = GTK_LABEL(gtk_label_new("I4 Froez"));
+    GtkLabel* title = GTK_LABEL(gtk_label_new("NECEAP"));
     gtk_widget_add_css_class(GTK_WIDGET(title), "profile-title");
     gtk_box_append(vbox, GTK_WIDGET(title));
 
@@ -574,8 +576,8 @@ static std::optional<std::vector<uint8_t>> aesGcmDecrypt(const std::vector<uint8
 static std::vector<uint8_t> legacyXorDecrypt(const std::vector<uint8_t>& data) {
     // Reproducir la clave legacy de 64 bytes (igual que en la versión XOR original)
     const char* user = g_get_user_name();
-    std::string legacyPass = std::string(user ? user : "i4froez")
-                             + "subscribe-to-freetazapablo-in-yt-i4froez-haha";
+    std::string legacyPass = std::string(user ? user : "neceap")
+                             + "neceap-legacy-salt";
     auto salt = getOrCreateSalt();
     std::vector<uint8_t> legacyKey(64);
     PKCS5_PBKDF2_HMAC(legacyPass.c_str(), (int)legacyPass.size(),
@@ -596,7 +598,7 @@ static void saveJson(const std::string& path, const json& data) {
         std::ofstream fout(path, std::ios::binary);
         fout.write(b64.c_str(), (std::streamsize)b64.size());
     } catch (const std::exception& e) {
-        g_warning("[i4froez] Error guardando %s: %s", path.c_str(), e.what());
+        g_warning("[neceap] Error guardando %s: %s", path.c_str(), e.what());
     }
 }
 
@@ -944,6 +946,7 @@ static std::string isoNow() {
     return buf;
 }
 
+
 // ─── Motores de búsqueda ───────────────────────────────────────────────────
 
 struct SearchEngine {
@@ -1012,12 +1015,12 @@ static std::string searchWithDefault(const std::string& query, const std::string
     return url;
 }
 
-// ─── Páginas internas froez:// ─────────────────────────────────────────────
+// ─── Páginas internas neceap:// ─────────────────────────────────────────────
 
 // Declaración adelantada — AppData se define completamente más adelante
 struct AppData;
 
-static const char* FROEZ_CSS = R"(
+static const char* NECEAP_CSS = R"(
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#1e1e2e;color:#cdd6f4;
@@ -1070,13 +1073,13 @@ tr:hover td{background:#1e1e2e}
 
 static std::string htmlHead(const std::string& title) {
     return "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-           "<title>" + title + "</title>" + FROEZ_CSS + "</head><body>";
+           "<title>" + title + "</title>" + NECEAP_CSS + "</head><body>";
 }
 
 static std::string htmlNavLinks(const std::string& active) {
     auto link = [&](const std::string& href, const std::string& label, const std::string& id) {
         std::string cls = (id == active) ? " class='active'" : "";
-        return "<a href='froez://" + href + "'" + cls + ">" + label + "</a>";
+        return "<a href='neceap://" + href + "'" + cls + ">" + label + "</a>";
     };
     return "<div class='nav-links'>"
         + link("newtab",    "Nueva pestaña",  "newtab")
@@ -1087,13 +1090,13 @@ static std::string htmlNavLinks(const std::string& active) {
         + "</div>";
 }
 
-// Genera la pagina froez://newtab
-static std::string buildFroezNewtab(const std::string& defaultEngine) {
+// Genera la pagina neceap://newtab
+static std::string buildNeceapNewtab(const std::string& defaultEngine) {
     const SearchEngine* eng = findEngine(defaultEngine);
     std::string engName = eng ? eng->name : "DuckDuckGo";
-    std::string html = htmlHead("Nueva pestaña — I4 Froez");
+    std::string html = htmlHead("Nueva pestaña — NECEAP");
     html += htmlNavLinks("newtab");
-    html += "<h1>I4 Froez <span class='badge'>v0.8 (BETA)</span></h1>";
+    html += "<h1>NECEAP <span class='badge'>v0.8 (BETA)</span></h1>";
     html += "<div class='card'>";
     html += "<label>Buscar con <strong style='color:#89b4fa'>" + htmlEscape(engName) + "</strong></label>";
     html += "<form id='sf' style='display:flex;gap:8px;max-width:600px;margin-top:8px'>"
@@ -1108,7 +1111,7 @@ static std::string buildFroezNewtab(const std::string& defaultEngine) {
             "if(!q)return;"
             "var lower=q.toLowerCase();"
             // Esquemas conocidos
-            "if(q.match(/^https?:\\/\\//)||q.match(/^file:\\/\\//)||q.match(/^froez:\\/\\//))"
+            "if(q.match(/^https?:\\/\\//)||q.match(/^file:\\/\\//)||q.match(/^neceap:\\/\\//)) "
             "{ window.location.href=q; return; }"
             // .onion / .i2p → http sin s
             "if(lower.match(/\\.onion(:\\d+)?(\\/.*)?$/) || lower.match(/\\.i2p(:\\d+)?(\\/.*)?$/))"
@@ -1116,7 +1119,7 @@ static std::string buildFroezNewtab(const std::string& defaultEngine) {
             // Parece dominio
             "if(q.includes('.')&&!q.includes(' '))"
             "{ window.location.href='https://'+q; return; }"
-            "window.location.href='froez://search?q='+encodeURIComponent(q);"
+            "window.location.href='neceap://search?q='+encodeURIComponent(q);"
             "};</script>";
     html += "</div>";
 
@@ -1133,12 +1136,12 @@ static std::string buildFroezNewtab(const std::string& defaultEngine) {
     return html;
 }
 
-// buildFroezSettings se define más adelante (requiere AppData completo)
-static std::string buildFroezSettings(AppData* app);
+// buildNeceapSettings se define más adelante (requiere AppData completo)
+static std::string buildNeceapSettings(AppData* app);
 
-// Genera la pagina froez://bookmarks
-static std::string buildFroezBookmarks(const json& bookmarks) {
-    std::string html = htmlHead("Marcadores — I4 Froez");
+// Genera la pagina neceap://bookmarks
+static std::string buildNeceapBookmarks(const json& bookmarks) {
+    std::string html = htmlHead("Marcadores — NECEAP");
     html += htmlNavLinks("bookmarks");
     html += "<h1>Marcadores</h1>";
     html += "<div class='card'>";
@@ -1154,7 +1157,7 @@ static std::string buildFroezBookmarks(const json& bookmarks) {
                     "<div class='row-url'>" + htmlEscape(url) + "</div>"
                     "</div>"
                     "<button class='danger' style='padding:3px 10px;font-size:11px' "
-                    "onclick=\"window.location.href='froez://remove-bookmark?url="
+                    "onclick=\"window.location.href='neceap://remove-bookmark?url="
                     + urlEncode(url) + "'\">Quitar</button>"
                     "</div>";
         }
@@ -1163,13 +1166,13 @@ static std::string buildFroezBookmarks(const json& bookmarks) {
     return html;
 }
 
-// Genera la pagina froez://history
-static std::string buildFroezHistory(const json& history) {
-    std::string html = htmlHead("Historial — I4 Froez");
+// Genera la pagina neceap://history
+static std::string buildNeceapHistory(const json& history) {
+    std::string html = htmlHead("Historial — NECEAP");
     html += htmlNavLinks("history");
     html += "<h1>Historial</h1>";
     html += "<div class='card'>"
-            "<a href='froez://clear-history' class='danger' "
+            "<a href='neceap://clear-history' class='danger' "
             "style='display:inline-block;padding:6px 14px;border-radius:6px;"
             "text-decoration:none;font-size:13px;'>Borrar historial completo</a>"
             "</div>";
@@ -1191,7 +1194,7 @@ static std::string buildFroezHistory(const json& history) {
                     "<div class='row-title'><a href='" + htmlEscape(url) + "'>" + htmlEscape(title) + "</a></div>"
                     "<div class='row-sub'>" + htmlEscape(ts) + " &nbsp; <span class='row-url'>" + htmlEscape(url) + "</span></div>"
                     "</div>"
-                    "<a href='froez://remove-history?url=" + urlEncode(url) + "&ts=" + urlEncode(h.value("ts","")) + "' "
+                    "<a href='neceap://remove-history?url=" + urlEncode(url) + "&ts=" + urlEncode(h.value("ts","")) + "' "
                     "title='Eliminar esta entrada' "
                     "style='color:#f38ba8;text-decoration:none;padding:4px 8px;font-size:16px;flex-shrink:0;align-self:center;'>✕</a>"
                     "</div>";
@@ -1218,11 +1221,11 @@ struct AppData {
     std::string defaultSearchEngine = "duckduckgo";
 
     // Configuración avanzada editable
-    std::string torProxy     = "socks5://127.0.0.1:9050";
-    std::string i2pProxy     = "http://127.0.0.1:4444";
-    std::string searxngUrl   = "https://searx.bndkt.io";
-    std::string whoogleUrl   = "https://search.sethforprivacy.com";
-    int         maxHistory   = 2000;
+    std::string torProxy      = "socks5://127.0.0.1:9050";
+    std::string i2pProxy      = "http://127.0.0.1:4444";
+    std::string searxngUrl    = "https://searx.bndkt.io";
+    std::string whoogleUrl    = "https://search.sethforprivacy.com";
+    int         maxHistory    = 2000;
 
     // Nuevas funciones
     bool httpsOnly  = false;  // Modo HTTPS-Only
@@ -1231,7 +1234,7 @@ struct AppData {
 
     void addHistory(const std::string& url, const std::string& title) {
         if (url.empty() || startsWith(url, "file://") || url == "about:blank"
-            || startsWith(url, "froez://")) return;
+            || startsWith(url, "neceap://")) return;
         if (!history.empty() && history.back()["url"] == url) return;
         json entry;
         entry["url"]   = url;
@@ -1339,6 +1342,12 @@ struct BrowserWindow {
 
     // Drag-and-drop de pestañas
     int  dragSrcIdx = -1; // índice de la pestaña que se está arrastrando
+
+    // Modo kiosk (Ctrl+F11): oculta todas las barras, solo WebView
+    GtkWidget* tabbarRowWidget  = nullptr;
+    GtkWidget* navBoxWidget     = nullptr;
+    GtkWidget* statusbarBoxWidget = nullptr;
+    bool kioskMode = false;
 };
 
 // Puntero global para acceder desde callbacks C
@@ -1383,10 +1392,10 @@ static void loadSettings(AppData* app) {
     };
     app->defaultSearchEngine = str("defaultSearchEngine", "duckduckgo");
     if (!findEngine(app->defaultSearchEngine)) app->defaultSearchEngine = "duckduckgo";
-    app->homeUri    = str("homeUri",    "froez://newtab");
-    app->torProxy   = str("torProxy",   "socks5://127.0.0.1:9050");
-    app->i2pProxy   = str("i2pProxy",   "http://127.0.0.1:4444");
-    app->searxngUrl = str("searxngUrl", "https://searx.bndkt.io");
+    app->homeUri    = str("homeUri",    "neceap://newtab");
+    app->torProxy    = str("torProxy",    "socks5://127.0.0.1:9050");
+    app->i2pProxy    = str("i2pProxy",    "http://127.0.0.1:4444");
+    app->searxngUrl  = str("searxngUrl",  "https://searx.bndkt.io");
     app->whoogleUrl = str("whoogleUrl", "https://search.sethforprivacy.com");
     if (s.contains("maxHistory") && s["maxHistory"].is_number_integer())
         app->maxHistory = s["maxHistory"].get<int>();
@@ -1402,17 +1411,18 @@ static void loadSettings(AppData* app) {
     }
 }
 
-// ─── Implementación de buildFroezSettings (requiere AppData completo) ─────
 
-static std::string buildFroezSettings(AppData* app) {
+// ─── Implementación de buildNeceapSettings (requiere AppData completo) ─────
+
+static std::string buildNeceapSettings(AppData* app) {
     const std::string& defaultEngine = app->defaultSearchEngine;
-    std::string html = htmlHead("Ajustes — I4 Froez");
+    std::string html = htmlHead("Ajustes — NECEAP");
     html += htmlNavLinks("settings");
     html += "<h1>Ajustes</h1>";
 
     // ── Motor de busqueda + opciones de red/privacidad ───────────────────────
     html += "<div class='card'><h2>Configuracion general</h2>"
-            "<p class='section-info'>Guardados en <code>~/.local/share/i4froez/settings.json</code> (cifrado).</p>"
+            "<p class='section-info'>Guardados en <code>~/.local/share/neceap/settings.json</code> (cifrado).</p>"
             "<form id='cf'>"
             "<table style='width:100%;border-collapse:collapse'>"
             "<thead><tr><th>Opcion</th><th>Valor</th><th>Descripcion</th></tr></thead>"
@@ -1508,7 +1518,7 @@ static std::string buildFroezSettings(AppData* app) {
             "      params.push(encodeURIComponent(el.name)+'='+encodeURIComponent(el.value));"
             "    }"
             "  }"
-            "  window.location.href='froez://set-config?'+params.join('&');"
+            "  window.location.href='neceap://set-config?'+params.join('&');"
             "}"
             "</script>"
             "</div>";
@@ -1517,15 +1527,15 @@ static std::string buildFroezSettings(AppData* app) {
     html += "<div class='card'><h2>Pagina de inicio</h2>"
             "<p class='section-info'>La URL que se carga al abrir una nueva pestaña (comando: home).</p>"
             "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
-            "<input type='text' id='homeurl' placeholder='froez://newtab' value='" + htmlEscape(app->homeUri) + "'"
+            "<input type='text' id='homeurl' placeholder='neceap://newtab' value='" + htmlEscape(app->homeUri) + "'"
             " style='flex:1;min-width:200px;max-width:400px;font-size:12px;padding:4px 8px'>"
             "<button type='button' class='primary' onclick='saveHome()'>Guardar</button>"
             "</div>"
             "<script>"
             "function saveHome(){"
             "  var v=document.getElementById('homeurl').value.trim();"
-            "  if(!v)v='froez://newtab';"
-            "  window.location.href='froez://set-home?url='+encodeURIComponent(v);"
+            "  if(!v)v='neceap://newtab';"
+            "  window.location.href='neceap://set-home?url='+encodeURIComponent(v);"
             "}"
             "</script></div>";
 
@@ -1558,7 +1568,7 @@ static std::string buildErrorPage(const std::string& title,
                                   const std::string& desc,
                                   const std::string& hint,
                                   const std::string& badUrl = "") {
-    std::string html = htmlHead(title + " — I4 Froez");
+    std::string html = htmlHead(title + " — NECEAP");
     html += R"(
 <style>
 .error-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -1583,7 +1593,7 @@ static std::string buildErrorPage(const std::string& title,
     html += R"HTML(  <div class='error-actions'>
     <button class='primary' onclick='history.back()'>Volver</button>
     <button onclick="window.location.reload()">Reintentar</button>
-    <button onclick="window.location.href='froez://newtab'">Inicio</button>
+    <button onclick="window.location.href='neceap://newtab'">Inicio</button>
   </div>
 </div>
 </body></html>)HTML";
@@ -1674,10 +1684,10 @@ static std::string buildGenericErrorPage(const std::string& url, const std::stri
     );
 }
 
-// ─── Página secreta: froez://theCreation ──────────────────────────────────
+// ─── Página secreta: neceap://theCreation ──────────────────────────────────
 
 static std::string buildTheCreation() {
-    std::string html = htmlHead("theCreation — I4 Froez");
+    std::string html = htmlHead("theCreation — NECEAP");
     html += R"(
 <style>
 .creation-hero{
@@ -1742,7 +1752,7 @@ static std::string buildTheCreation() {
 </style>
 
 <div class='creation-hero'>
-  <h1>I4 Froez</h1>
+  <h1>NECEAP</h1>
   <div class='version'>v0.8 Beta</div>
   <p class='tagline'>
     Mi objetivo es crear el <strong style='color:#cdd6f4'>Ultimate Freedom Browser</strong><br>
@@ -1765,7 +1775,7 @@ static std::string buildTheCreation() {
     se convirtieron en herramientas de sacarte datos, disfrazadas como un navegador.
   </p>
   <p>
-    I4 Froez nace del puro aburrimiento, de la curiosidad de entrar a la Deep Web
+    NECEAP nace del puro aburrimiento, de la curiosidad de entrar a la Deep Web
     y de la paranoia de estar siendo brutalmente vigilado por el gobierno cuando
     entras a internet, y claro, de un tipo random que solo le alcanza una laptop
     que salio hace 8 años.
@@ -1822,7 +1832,7 @@ static std::string buildTheCreation() {
 
 <div class='secret-footer'>
   <span>/// </span>Esta pagina es secreta. Si llegaste aqui, sabes como funciona.<span> ///</span><br>
-  froez://theCreation &nbsp;·&nbsp; I4 Froez v0.8 Beta &nbsp;·&nbsp; hecho de jugo de cebolla con lupa.
+  neceap://theCreation &nbsp;·&nbsp; NECEAP v0.8 Beta &nbsp;·&nbsp; hecho de jugo de cebolla con lupa.
 </div>
 
 </body></html>
@@ -1830,10 +1840,10 @@ static std::string buildTheCreation() {
     return html;
 }
 
-// ─── Página froez://peru — Datos de la República del Perú ───────────────────
+// ─── Página neceap://peru — Datos de la República del Perú ───────────────────
 
-static std::string buildFroezPeru() {
-    std::string html = htmlHead("República del Perú — I4 Froez");
+static std::string buildNeceapPeru() {
+    std::string html = htmlHead("República del Perú — NECEAP");
     html += htmlNavLinks("peru");
     html += R"HTML(
 <style>
@@ -1995,10 +2005,10 @@ static std::string buildFroezPeru() {
     return html;
 }
 
-// ─── Página froez://downloads ─────────────────────────────────────────────
+// ─── Página neceap://downloads ─────────────────────────────────────────────
 
-static std::string buildFroezDownloads() {
-    std::string html = htmlHead("Descargas — I4 Froez");
+static std::string buildNeceapDownloads() {
+    std::string html = htmlHead("Descargas — NECEAP");
     html += htmlNavLinks("downloads");
     html += "<h1>Descargas</h1>";
     html += "<div class='card'><p class='section-info'>El panel de descargas se muestra en la barra lateral de la ventana."
@@ -2007,10 +2017,10 @@ static std::string buildFroezDownloads() {
     return html;
 }
 
-// ─── Handler del esquema froez:// ─────────────────────────────────────────
-// Llamado por WebKitGTK cuando cualquier WebView intenta cargar froez://...
+// ─── Handler del esquema neceap:// ─────────────────────────────────────────
+// Llamado por WebKitGTK cuando cualquier WebView intenta cargar neceap://...
 
-static void froezSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
+static void neceapSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
     const char* uriRaw = webkit_uri_scheme_request_get_uri(request);
     if (!uriRaw) {
         webkit_uri_scheme_request_finish_error(request,
@@ -2019,8 +2029,8 @@ static void froezSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
     }
 
     std::string uri(uriRaw);
-    // Separar "froez://page?query" → page y query
-    std::string rest = uri.substr(8); // quitar "froez://"
+    // Separar "neceap://page?query" → page y query
+    std::string rest = uri.substr(9); // quitar "neceap://"
     size_t qmark = rest.find('?');
     std::string page  = qmark != std::string::npos ? rest.substr(0, qmark) : rest;
     std::string query = qmark != std::string::npos ? rest.substr(qmark + 1) : "";
@@ -2037,26 +2047,46 @@ static void froezSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
     // Las páginas con lógica propia se manejan por separado abajo.
     static const std::unordered_map<std::string,
         std::function<std::string(AppData*)>> htmlPages = {
-        { "newtab",      [](AppData* a){ return buildFroezNewtab(a->defaultSearchEngine); } },
-        { "",            [](AppData* a){ return buildFroezNewtab(a->defaultSearchEngine); } },
-        { "settings",    [](AppData* a){ return buildFroezSettings(a); } },
-        { "bookmarks",   [](AppData* a){ return buildFroezBookmarks(a->bookmarks); } },
-        { "history",     [](AppData* a){ return buildFroezHistory(a->history); } },
+        { "newtab",      [](AppData* a){ return buildNeceapNewtab(a->defaultSearchEngine); } },
+        { "",            [](AppData* a){ return buildNeceapNewtab(a->defaultSearchEngine); } },
+        { "settings",    [](AppData* a){ return buildNeceapSettings(a); } },
+        { "bookmarks",   [](AppData* a){ return buildNeceapBookmarks(a->bookmarks); } },
+        { "history",     [](AppData* a){ return buildNeceapHistory(a->history); } },
         { "theCreation", [](AppData* )  { return buildTheCreation(); } },
-        { "peru",        [](AppData* )  { return buildFroezPeru(); } },
-        { "downloads",   [](AppData* )  { return buildFroezDownloads(); } },
-        { "i2p-blocked", [](AppData* )  {
-            return buildErrorPage(
-                "Bloqueado en perfil I2P",
-                "Destino no permitido en I2P",
-                ":I",
-                "En el perfil I2P solo se permite navegar a sitios <strong>.i2p</strong>. "
-                "Intentar cargar sitios clearnet desde este perfil podria mezclar trafico "
-                "I2P con Internet normal y comprometer el anonimato.",
-                "Para navegar a sitios clearnet, cambia al perfil Clearnet con el comando "
-                "<code>clearnet</code> en el terminal. Esto hara un restart limpio del perfil.",
-                ""
-            );
+        { "peru",        [](AppData* )  { return buildNeceapPeru(); } },
+        { "downloads",   [](AppData* )  { return buildNeceapDownloads(); } },
+        { "i2p-blocked", [](AppData*)  {
+            std::string html = htmlHead("Destino no permitido en I2P — NECEAP");
+            html += R"(
+<style>
+.error-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:80vh;text-align:center;gap:16px}
+.error-icon{font-size:72px;line-height:1;margin-bottom:8px}
+.error-title{color:#f38ba8;font-size:28px;font-weight:700;margin:0}
+.error-desc{color:#a6adc8;font-size:15px;max-width:560px;line-height:1.6}
+.error-hint{color:#585b70;font-size:13px;max-width:520px;line-height:1.5}
+.error-actions{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;justify-content:center}
+</style>
+<div class='error-wrap'>
+  <div class='error-icon'>:I</div>
+  <h1 class='error-title'>Destino no permitido en I2P</h1>
+  <p class='error-desc'>
+    En el perfil I2P solo se permite navegar a sitios <strong>.i2p</strong>.<br>
+    Intentar cargar sitios clearnet desde este perfil podría mezclar tráfico
+    I2P con Internet normal y comprometer el anonimato.
+  </p>
+  <p class='error-hint'>
+    Para navegar a sitios clearnet, cambia al perfil Clearnet con el comando
+    <code>clearnet</code> en el terminal. Esto hará un restart limpio del perfil.
+  </p>
+  <div class='error-actions'>
+    <button class='primary' onclick='history.back()'>Volver</button>
+    <button onclick="window.location.href='neceap://newtab'">Inicio</button>
+    <button onclick="window.location.href='neceap://settings'">Ajustes</button>
+  </div>
+</div>
+</body></html>)";
+            return html;
         }},
     };
 
@@ -2067,7 +2097,7 @@ static void froezSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
             app->defaultSearchEngine = id;
             saveSettings(app);
         }
-        redirectUri = "froez://settings";
+        redirectUri = "neceap://settings";
 
     } else if (page == "set-home") {
         std::string url = queryParam(query, "url");
@@ -2075,16 +2105,16 @@ static void froezSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
             app->homeUri = url;
             saveSettings(app);
         }
-        redirectUri = "froez://settings?saved=1";
+        redirectUri = "neceap://settings?saved=1";
 
     } else if (page == "set-config") {
-        // froez://set-config?engine=...&tor=...&i2p=...&searxng=...&whoogle=...&maxhistory=...&httpsonly=...&jsblocked=...
+        // neceap://set-config?engine=...&tor=...&i2p=...&searxng=...&whoogle=...&maxhistory=...&httpsonly=...&jsblocked=...
         auto qp = [&](const std::string& k){ return queryParam(query, k); };
         if (auto v = qp("engine"); !v.empty() && findEngine(v)) app->defaultSearchEngine = v;
-        if (auto v = qp("tor");      !v.empty()) app->torProxy   = v;
-        if (auto v = qp("i2p");      !v.empty()) app->i2pProxy   = v;
-        if (auto v = qp("searxng");  !v.empty()) app->searxngUrl = v;
-        if (auto v = qp("whoogle");  !v.empty()) app->whoogleUrl = v;
+        if (auto v = qp("tor");      !v.empty()) app->torProxy    = v;
+        if (auto v = qp("i2p");      !v.empty()) app->i2pProxy    = v;
+        if (auto v = qp("searxng");  !v.empty()) app->searxngUrl  = v;
+        if (auto v = qp("whoogle");  !v.empty()) app->whoogleUrl  = v;
         if (auto v = qp("maxhistory"); !v.empty()) {
             try { int n = std::stoi(v); if (n >= 10 && n <= 50000) app->maxHistory = n; } catch(...) {}
         }
@@ -2092,17 +2122,17 @@ static void froezSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
         app->httpsOnly = boolParam(qp("httpsonly"));
         app->jsBlocked = boolParam(qp("jsblocked"));
         saveSettings(app);
-        redirectUri = "froez://settings?saved=1";
+        redirectUri = "neceap://settings?saved=1";
 
     } else if (page == "remove-bookmark") {
         std::string url = queryParam(query, "url");
         if (!url.empty()) app->removeBookmark(url);
-        redirectUri = "froez://bookmarks";
+        redirectUri = "neceap://bookmarks";
 
     } else if (page == "clear-history") {
         app->history = json::array();
         saveJson(historyFile(), app->history);
-        redirectUri = "froez://history";
+        redirectUri = "neceap://history";
 
     } else if (page == "remove-history") {
         std::string url   = queryParam(query, "url");
@@ -2125,10 +2155,10 @@ static void froezSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
                 saveJson(historyFile(), app->history);
             }
         }
-        redirectUri = "froez://history";
+        redirectUri = "neceap://history";
 
     } else if (page == "search") {
-        // froez://search?q=... → redirigir al motor por defecto
+        // neceap://search?q=... → redirigir al motor por defecto
         redirectUri = searchWithDefault(queryParam(query, "q"),
             app->defaultSearchEngine, app->searxngUrl, app->whoogleUrl);
 
@@ -2148,7 +2178,7 @@ static void froezSchemeHandler(WebKitURISchemeRequest* request, gpointer) {
         }
 
     } else {
-        html = buildNotFoundPage("froez://" + page);
+        html = buildNotFoundPage("neceap://" + page);
     }
 
     // Si hay redirección: mini-HTML con meta-refresh
@@ -2191,11 +2221,8 @@ static WebKitWebView* makeWebview(BrowserWindow* bw, const std::string& mode) {
         // IMPORTANTE: webkit_network_proxy_settings_new NO soporta credenciales
         // embebidas en la URI (user:pass@host) — las ignora silenciosamente y
         // el proxy no se aplica. Usar la URI limpia sin credenciales.
-        // El circuit isolation se logra con sesiones efímeras separadas por pestaña:
-        // cada WebKitNetworkSession efímera abre sus propias conexiones TCP a Tor,
-        // y Tor asigna circuitos distintos a streams con cookies de aislamiento distintas.
         const std::string& proxyStr = bw->app->torProxy; // "socks5://127.0.0.1:9050"
-        g_message("[i4froez] Tor proxy: %s", proxyStr.c_str());
+        g_message("[neceap] Tor proxy: %s", proxyStr.c_str());
         WebKitNetworkProxySettings* ps = webkit_network_proxy_settings_new(
             proxyStr.c_str(), nullptr);
         webkit_network_session_set_proxy_settings(ns,
@@ -2206,12 +2233,11 @@ static WebKitWebView* makeWebview(BrowserWindow* bw, const std::string& mode) {
         g_object_unref(ns);
     } else if (useI2P) {
         WebKitNetworkSession* ns = webkit_network_session_new_ephemeral();
-        const std::string& proxyStr = bw->app->i2pProxy; // "http://127.0.0.1:4444"
-        g_message("[i4froez] I2P proxy: %s", proxyStr.c_str());
-        WebKitNetworkProxySettings* ps = webkit_network_proxy_settings_new(
-            proxyStr.c_str(), nullptr);
-        webkit_network_session_set_proxy_settings(ns,
-            WEBKIT_NETWORK_PROXY_MODE_CUSTOM, ps);
+        const std::string& i2pProxy = bw->app->i2pProxy;
+        // Solo .i2p: todo el tráfico va al proxy I2P local.
+        g_message("[neceap] I2P proxy (solo .i2p): %s", i2pProxy.c_str());
+        WebKitNetworkProxySettings* ps = webkit_network_proxy_settings_new(i2pProxy.c_str(), nullptr);
+        webkit_network_session_set_proxy_settings(ns, WEBKIT_NETWORK_PROXY_MODE_CUSTOM, ps);
         webkit_network_proxy_settings_free(ps);
         wv = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
             "network-session", ns, nullptr));
@@ -2297,6 +2323,10 @@ static void setupDownloadHandler(BrowserWindow* bw, WebKitWebView* wv);
 static void switchTab(BrowserWindow* bw, int idx);
 static void clearTabData(BrowserWindow* bw, TabData& td);
 static void rebuildTabbar(BrowserWindow* bw);
+// Helpers de UI (definidos antes de onGlobalKey, usados antes)
+static void statusMsg(BrowserWindow* bw, const std::string& msg, guint ms = 2000);
+static std::string currentHost(BrowserWindow* bw);
+static void applyZoom(BrowserWindow* bw, double z);
 static void openTab(BrowserWindow* bw, const char* uri = nullptr, const std::string& mode = "normal");
 static void onCloseTab(BrowserWindow* bw, int idx);
 
@@ -2624,7 +2654,7 @@ static void onTitleChanged(GObject* obj, GParamSpec*, gpointer data) {
         i++;
     }
     if (wv == currentWv(bw)) {
-        std::string winTitle = title.empty() ? "I4 Froez" : "I4 Froez — " + title;
+        std::string winTitle = title.empty() ? "NECEAP" : "NECEAP — " + title;
         gtk_window_set_title(GTK_WINDOW(bw->window), winTitle.c_str());
     }
 }
@@ -2660,8 +2690,8 @@ static gboolean onLoadFailed(WebKitWebView* wv,
     std::string url = failingUri ? failingUri : "";
     std::string html;
 
-    // No interceptar cancelaciones de usuario ni errores de froez://
-    if (url.rfind("froez://", 0) == 0) return FALSE;
+    // No interceptar cancelaciones de usuario ni errores de neceap://
+    if (url.rfind("neceap://", 0) == 0) return FALSE;
     if (error && error->domain == WEBKIT_NETWORK_ERROR &&
         error->code == WEBKIT_NETWORK_ERROR_CANCELLED) return FALSE;
 
@@ -2750,18 +2780,23 @@ static std::string resolveInput(BrowserWindow* bw, const std::string& text) {
         }
     }
 
-    // Modo I2P: bloquear cualquier destino que no sea .i2p, froez://, o localhost
-    // Evita mezclar trafico I2P con clearnet por error del usuario
+    // ── Modo I2P ──────────────────────────────────────────────────────────────
     if (g_activeProfile == BrowserProfile::I2P) {
         bool isI2p      = lower.find(".i2p") != std::string::npos;
-        bool isFroez    = startsWith(lower, "froez://");
+        bool isNeceap    = startsWith(lower, "neceap://");
         bool isAbout    = startsWith(lower, "about:");
         bool isLocal    = startsWith(lower, "127.") || lower.find("localhost") != std::string::npos;
         bool isRelative = lower.find("://") == std::string::npos && lower.find('.') == std::string::npos;
-        if (!isI2p && !isFroez && !isAbout && !isLocal && !isRelative) {
+        bool isClearnet = !isI2p && !isNeceap && !isAbout && !isLocal && !isRelative;
+
+        if (isClearnet) {
             gtk_label_set_text(bw->statusbar, "I2P: solo sitios .i2p permitidos en este perfil");
-            // Mostrar página de error explicativa
-            return "froez://i2p-blocked";
+            return "neceap://i2p-blocked";
+        }
+
+        // Sitios .i2p: forzar HTTP siempre (nunca HTTPS en I2P)
+        if (isI2p && startsWith(lower, "https://")) {
+            return "http://" + text.substr(8);
         }
     }
     // Modo HTTPS-Only: bloquear http:// excepto redes locales/especiales
@@ -2777,12 +2812,11 @@ static std::string resolveInput(BrowserWindow* bw, const std::string& text) {
         if (!exempt) {
             // Upgrade a HTTPS
             std::string upgraded = "https://" + text.substr(7);
-            gtk_label_set_text(bw->statusbar, "HTTPS-Only: redirigido a HTTPS");
-            g_timeout_add(2500, [](gpointer p) -> gboolean { gtk_label_set_text(GTK_LABEL(p), ""); return FALSE; }, bw->statusbar);
+            statusMsg(bw, "HTTPS-Only: redirigido a HTTPS", 2500);
             return upgraded;
         }
     }
-    if (startsWith(text, "froez://"))  return text;
+    if (startsWith(text, "neceap://"))  return text;
     if (startsWith(text, "http://")  || startsWith(text, "https://") ||
         startsWith(text, "about:")   || startsWith(text, "file://"))
         return text;
@@ -2823,7 +2857,7 @@ static void updateBadge(BrowserWindow* bw, const std::string& mode) {
 
     // Tabla: { modo, etiqueta, clase-css }
     static const struct { const char* mode; const char* label; const char* cls; const char* tooltip; } BADGE_MAP[] = {
-        { "tor", "TOR",   "badge-tor",   "Modo Tor — tráfico enrutado por la red Tor" },
+        { "tor", "Tor",   "badge-tor",   "Modo Tor — tráfico enrutado por la red Tor" },
         { "i2p", "I2P",   "badge-i2p",   "Modo I2P — tráfico enrutado por la red I2P" },
         { "",    "Clear", "badge-clear", "Modo clearnet — conexión directa a Internet" },
     };
@@ -2849,8 +2883,8 @@ static void updateSecurityBadge(BrowserWindow* bw, const std::string& uri) {
         "badge-secure","badge-insecure","badge-onion","badge-onion-s","badge-eepsite","badge-file","badge-clear"
     };
 
-    // Páginas internas froez:// — ocultar badge de seguridad
-    if (startsWith(uri, "froez://")) {
+    // Páginas internas neceap:// — ocultar badge de seguridad
+    if (startsWith(uri, "neceap://")) {
         gtk_widget_set_visible(w, FALSE);
         return;
     }
@@ -2935,7 +2969,7 @@ static void termPrint(BrowserWindow* bw, const std::string& text, bool noNl = fa
 static void termPrompt(BrowserWindow* bw) {
     GtkTextIter end;
     gtk_text_buffer_get_end_iter(bw->terminalBuf, &end);
-    gtk_text_buffer_insert(bw->terminalBuf, &end, "froezshell -> ", -1);
+    gtk_text_buffer_insert(bw->terminalBuf, &end, "neceap>  ", -1);
     GtkTextIter end2;
     gtk_text_buffer_get_end_iter(bw->terminalBuf, &end2);
     // Recrear el mark con LEFT_GRAVITY=TRUE: el texto que el usuario escribe
@@ -2944,7 +2978,7 @@ static void termPrompt(BrowserWindow* bw) {
         gtk_text_buffer_delete_mark(bw->terminalBuf, bw->promptEndMark);
     bw->promptEndMark = gtk_text_buffer_create_mark(
         bw->terminalBuf, nullptr, &end2, TRUE /* left gravity */);
-    // Congelar el " froezshell -> " recién insertado
+    // Congelar el " neceap>  " recién insertado
     termFreezeHistory(bw);
     // Colocar el cursor al final (zona editable)
     gtk_text_buffer_get_end_iter(bw->terminalBuf, &end2);
@@ -2979,15 +3013,15 @@ static void applyDarkCss(BrowserWindow* bw) {
     const char* css = ":root{color-scheme:dark!important}"
                       "*{background-color:#111!important;color:#eee!important;border-color:#333!important}"
                       "a{color:#8ab4f8!important}img{filter:brightness(0.85)}";
-    std::string js = R"((function(){let el=document.getElementById('i4froez-dark');)"
-                     R"(if(!el){el=document.createElement('style');el.id='i4froez-dark';document.head.appendChild(el);})"
+    std::string js = R"((function(){let el=document.getElementById('neceap-dark');)"
+                     R"(if(!el){el=document.createElement('style');el.id='neceap-dark';document.head.appendChild(el);})"
                      R"(el.textContent=`)" + std::string(css) + R"(`;})();)";
     webkit_web_view_evaluate_javascript(currentWv(bw), js.c_str(), -1,
         nullptr, nullptr, nullptr, nullptr, nullptr);
 }
 
 static void removeDarkCss(BrowserWindow* bw) {
-    const char* js = "(function(){let el=document.getElementById('i4froez-dark');if(el)el.remove();})();";
+    const char* js = "(function(){let el=document.getElementById('neceap-dark');if(el)el.remove();})();";
     webkit_web_view_evaluate_javascript(currentWv(bw), js, -1,
         nullptr, nullptr, nullptr, nullptr, nullptr);
 }
@@ -3581,8 +3615,8 @@ static void wipeSessionMemory(AppData* app) {
     app->bookmarks = json::array();
 
     // 4. Limpiar ajustes sensibles en RAM
-    OPENSSL_cleanse(app->torProxy.data(),   app->torProxy.size());
-    OPENSSL_cleanse(app->i2pProxy.data(),   app->i2pProxy.size());
+    OPENSSL_cleanse(app->torProxy.data(),    app->torProxy.size());
+    OPENSSL_cleanse(app->i2pProxy.data(),    app->i2pProxy.size());
 }
 
 // ─── Cambio de perfil — wipe + restart de la ventana ──────────────────────
@@ -3870,6 +3904,7 @@ static void runCommand(BrowserWindow* bw, const std::string& raw) {
             "  Ctrl+Alt+J            → consola JavaScript\n"
             "  Ctrl+Alt+D            → panel de descargas\n"
             "  F11                   → pantalla completa\n"
+            "  Ctrl+F11              → modo kiosk (solo contenido, sin barras)\n"
             "  Alt+←/→               → atrás/adelante\n"
             "  Alt+Home              → inicio\n"
             "  ^/v (en terminal)     → historial de comandos\n"
@@ -3919,30 +3954,22 @@ static void runCommand(BrowserWindow* bw, const std::string& raw) {
     } else if (cmd == "tab") {
         try { int n = std::stoi(args) - 1; switchTab(bw, n); }
         catch (...) { termPrint(bw, "Uso: tab <número>"); }
-    } else if (cmd == "froez") {
-        // Navegar a página interna: froez newtab, froez settings, etc.
+    } else if (cmd == "neceap") {
+        // Navegar a página interna: neceap newtab, neceap settings, etc.
         std::string page = args.empty() ? "newtab" : strLower(args);
-        nav("froez://" + page);
+        nav("neceap://" + page);
     } else if (cmd == "zoom") {
         if (!args.empty()) {
             try {
                 double level = std::stod(args);
                 if (level >= 0.1 && level <= 5.0) {
                     webkit_web_view_set_zoom_level(currentWv(bw), level);
-                    // Guardar zoom por dominio
-                    const char* uri = webkit_web_view_get_uri(currentWv(bw));
-                    if (uri) {
-                        GUri* gu = g_uri_parse(uri, G_URI_FLAGS_NONE, nullptr);
-                        if (gu) {
-                            std::string host = g_uri_get_host(gu) ? g_uri_get_host(gu) : "";
-                            g_uri_unref(gu);
-                            if (!host.empty()) {
-                                bw->app->zoomPerDomain[host] = level;
-                                saveSettings(bw->app);
-                                char buf[64]; snprintf(buf, sizeof(buf), "Zoom %.2fx guardado para %s", level, host.c_str());
-                                termPrint(bw, buf); termPrint(bw, ""); termPrompt(bw); return;
-                            }
-                        }
+                    std::string host = currentHost(bw);
+                    if (!host.empty()) {
+                        bw->app->zoomPerDomain[host] = level;
+                        saveSettings(bw->app);
+                        char buf[64]; snprintf(buf, sizeof(buf), "Zoom %.2fx guardado para %s", level, host.c_str());
+                        termPrint(bw, buf); termPrint(bw, ""); termPrompt(bw); return;
                     }
                     char buf[32]; snprintf(buf, sizeof(buf), "%.2fx", level);
                     termPrint(bw, std::string("Zoom: ") + buf);
@@ -4061,7 +4088,7 @@ static void runCommand(BrowserWindow* bw, const std::string& raw) {
         } else {
             termPrint(bw, "Error al contactar el socket de control Tor.");
             termPrint(bw, "Asegurate de que tor este corriendo con ControlPort 9051.");
-            if (nerr) { g_warning("[i4froez] newnym: %s", nerr->message); g_error_free(nerr); }
+            if (nerr) { g_warning("[neceap] newnym: %s", nerr->message); g_error_free(nerr); }
             termPrompt(bw);
         }
         return;
@@ -4093,7 +4120,7 @@ static void runCommand(BrowserWindow* bw, const std::string& raw) {
             g_io_channel_unref(ch);
         } else {
             termPrint(bw, "Error ejecutando curl. ¿Está instalado?");
-            if (err) { g_warning("[i4froez] curl: %s", err->message); g_error_free(err); }
+            if (err) { g_warning("[neceap] curl: %s", err->message); g_error_free(err); }
             termPrint(bw, ""); termPrompt(bw);
         }
         return;
@@ -4185,17 +4212,13 @@ static void runCommand(BrowserWindow* bw, const std::string& raw) {
     } else if (cmd == "downloads" || cmd == "dl") {
         toggleDlPanel(bw); termPrint(bw, g_dlPanel.visible ? "Panel de descargas abierto." : "Panel de descargas cerrado."); termPrint(bw, ""); termPrompt(bw); return;
     } else if (cmd == "peru" || cmd == "pe") {
-        nav("froez://peru");
+        nav("neceap://peru");
     } else if (cmd == "zoomreset") {
         webkit_web_view_set_zoom_level(currentWv(bw), 1.0);
         const char* uri = webkit_web_view_get_uri(currentWv(bw));
         if (uri) {
-            GUri* gu = g_uri_parse(uri, G_URI_FLAGS_NONE, nullptr);
-            if (gu) {
-                std::string host = g_uri_get_host(gu) ? g_uri_get_host(gu) : "";
-                g_uri_unref(gu);
-                if (!host.empty()) { bw->app->zoomPerDomain.erase(host); saveSettings(bw->app); termPrint(bw, "Zoom reseteado y eliminado para " + host); termPrint(bw, ""); termPrompt(bw); return; }
-            }
+            std::string host = currentHost(bw);
+            if (!host.empty()) { bw->app->zoomPerDomain.erase(host); saveSettings(bw->app); termPrint(bw, "Zoom reseteado y eliminado para " + host); termPrint(bw, ""); termPrompt(bw); return; }
         }
         termPrint(bw, "Zoom reseteado a 1.0x.");
     } else if (cmd == "calc") {
@@ -4237,7 +4260,7 @@ static void runCommand(BrowserWindow* bw, const std::string& raw) {
         std::string engName = eng ? eng->name : bw->app->defaultSearchEngine;
         std::string profName = profileDisplayName(g_activeProfile);
         termPrint(bw,
-            "I4 Froez v0.8 (BETA)\n"
+            "NECEAP v0.8 (BETA)\n"
             "WebKitGTK 6 + GTK 4 + C++20\n"
             "Perfil activo: " + profName + " (" + profileDir() + ")\n"
             "Redes: Tor (" + bw->app->torProxy + "), I2P (" + bw->app->i2pProxy + ")\n"
@@ -4246,7 +4269,6 @@ static void runCommand(BrowserWindow* bw, const std::string& raw) {
             "  [*] Clearnet / Tor / I2P tienen almacenamiento separado\n"
             "  [*] Cada perfil con sal, verificador y clave propios\n"
             "  [*] Cambio de perfil hace wipe de RAM (Tor/I2P al salir)\n"
-            "  [*] Circuit isolation por pestaña en Tor (SOCKS5 user:pass)\n"
             "  [*] I2P bloquea trafico clearnet automaticamente\n"
             "─── Fingerprint por perfil ─────────────────────\n"
             "  [*] Clearnet: Chrome/Windows (UA coherente)\n"
@@ -4565,8 +4587,7 @@ static void inspectorLoad(BrowserWindow* bw);
 static void openInspector(BrowserWindow* bw) {
     if (bw->inspectorMode) return;
     if (bw->terminalVisible) {
-        gtk_label_set_text(bw->statusbar, "Cierra la terminal primero (Ctrl+Alt+T)");
-        g_timeout_add(2000, [](gpointer p) -> gboolean { gtk_label_set_text(GTK_LABEL(p), ""); return FALSE; }, bw->statusbar);
+        statusMsg(bw, "Cierra la terminal primero (Ctrl+Alt+T)");
         return;
     }
     bw->inspectorMode = true;
@@ -4636,9 +4657,43 @@ static void inspectorLoad(BrowserWindow* bw) {
         }, ctx);
 }
 
+
+// ─── Helpers de UI frecuentes ─────────────────────────────────────────────────
+
+// Muestra un mensaje en la statusbar y lo borra tras `ms` milisegundos.
+static void statusMsg(BrowserWindow* bw, const std::string& msg, guint ms) {
+    gtk_label_set_text(bw->statusbar, msg.c_str());
+    if (ms > 0)
+        g_timeout_add(ms, [](gpointer p) -> gboolean {
+            gtk_label_set_text(GTK_LABEL(p), ""); return FALSE;
+        }, bw->statusbar);
+}
+
+// Devuelve el host de la URI actual del WebView activo, o "" si no aplica.
+static std::string currentHost(BrowserWindow* bw) {
+    const char* uri = webkit_web_view_get_uri(currentWv(bw));
+    if (!uri) return "";
+    GUri* gu = g_uri_parse(uri, G_URI_FLAGS_NONE, nullptr);
+    if (!gu) return "";
+    std::string host = g_uri_get_host(gu) ? g_uri_get_host(gu) : "";
+    g_uri_unref(gu);
+    return host;
+}
+
+// Aplica un nivel de zoom al WebView activo y lo persiste por dominio.
+static void applyZoom(BrowserWindow* bw, double z) {
+    webkit_web_view_set_zoom_level(currentWv(bw), z);
+    char buf[32]; snprintf(buf, sizeof(buf), "Zoom: %.0f%%", z * 100);
+    statusMsg(bw, buf, 1500);
+    std::string host = currentHost(bw);
+    if (!host.empty()) { bw->app->zoomPerDomain[host] = z; saveSettings(bw->app); }
+}
+
+
 // ─── Atajo de teclado global ────────────────────────────────────────────────
 
 static void toggleFindbar(BrowserWindow* bw);
+static void toggleKiosk(BrowserWindow* bw);
 static void toggleTerminal(BrowserWindow* bw);
 static void toggleInspector(BrowserWindow* bw);
 static void toggleJsConsole(BrowserWindow* bw);
@@ -4657,6 +4712,7 @@ static gboolean onGlobalKey(GtkEventControllerKey*, guint keyval, guint,
         if (keyval == GDK_KEY_r && !shiftHeld) { webkit_web_view_reload(currentWv(bw)); return TRUE; }
         if (keyval == GDK_KEY_r &&  shiftHeld) { webkit_web_view_reload_bypass_cache(currentWv(bw)); return TRUE; }
         if (keyval == GDK_KEY_f) { toggleFindbar(bw); return TRUE; }
+        if (keyval == GDK_KEY_F11) { toggleKiosk(bw); return TRUE; }
         // Ctrl+Tab / Ctrl+Shift+Tab para navegar entre pestañas
         if (keyval == GDK_KEY_Tab && !shiftHeld) {
             int next = (bw->currentTab + 1) % (int)bw->tabs.size();
@@ -4667,32 +4723,18 @@ static gboolean onGlobalKey(GtkEventControllerKey*, guint keyval, guint,
             switchTab(bw, prev); return TRUE;
         }
         if (keyval == GDK_KEY_plus || keyval == GDK_KEY_equal) {
-            double z = std::min(webkit_web_view_get_zoom_level(currentWv(bw)) + 0.1, 5.0);
-            webkit_web_view_set_zoom_level(currentWv(bw), z);
-            char buf[32]; snprintf(buf, sizeof(buf), "Zoom: %.0f%%", z * 100);
-            gtk_label_set_text(bw->statusbar, buf);
-            g_timeout_add(1500, [](gpointer p)->gboolean{ gtk_label_set_text(GTK_LABEL(p),""); return FALSE; }, bw->statusbar);
-            const char* uri = webkit_web_view_get_uri(currentWv(bw));
-            if (uri) { GUri* gu = g_uri_parse(uri, G_URI_FLAGS_NONE, nullptr); if (gu) { std::string h = g_uri_get_host(gu) ? g_uri_get_host(gu) : ""; g_uri_unref(gu); if (!h.empty()) { bw->app->zoomPerDomain[h] = z; saveSettings(bw->app); } } }
+            applyZoom(bw, std::min(webkit_web_view_get_zoom_level(currentWv(bw)) + 0.1, 5.0));
             return TRUE;
         }
         if (keyval == GDK_KEY_minus) {
-            double z = std::max(webkit_web_view_get_zoom_level(currentWv(bw)) - 0.1, 0.1);
-            webkit_web_view_set_zoom_level(currentWv(bw), z);
-            char buf[32]; snprintf(buf, sizeof(buf), "Zoom: %.0f%%", z * 100);
-            gtk_label_set_text(bw->statusbar, buf);
-            g_timeout_add(1500, [](gpointer p)->gboolean{ gtk_label_set_text(GTK_LABEL(p),""); return FALSE; }, bw->statusbar);
-            const char* uri = webkit_web_view_get_uri(currentWv(bw));
-            if (uri) { GUri* gu = g_uri_parse(uri, G_URI_FLAGS_NONE, nullptr); if (gu) { std::string h = g_uri_get_host(gu) ? g_uri_get_host(gu) : ""; g_uri_unref(gu); if (!h.empty()) { bw->app->zoomPerDomain[h] = z; saveSettings(bw->app); } } }
+            applyZoom(bw, std::max(webkit_web_view_get_zoom_level(currentWv(bw)) - 0.1, 0.1));
             return TRUE;
         }
         if (keyval == GDK_KEY_0) {
             webkit_web_view_set_zoom_level(currentWv(bw), 1.0);
-            gtk_label_set_text(bw->statusbar, "Zoom: 100%");
-            g_timeout_add(1500, [](gpointer p)->gboolean{ gtk_label_set_text(GTK_LABEL(p),""); return FALSE; }, bw->statusbar);
-            // Borrar zoom guardado para este dominio
-            const char* uri = webkit_web_view_get_uri(currentWv(bw));
-            if (uri) { GUri* gu = g_uri_parse(uri, G_URI_FLAGS_NONE, nullptr); if (gu) { std::string h = g_uri_get_host(gu) ? g_uri_get_host(gu) : ""; g_uri_unref(gu); if (!h.empty()) { bw->app->zoomPerDomain.erase(h); saveSettings(bw->app); } } }
+            statusMsg(bw, "Zoom: 100%", 1500);
+            std::string host = currentHost(bw);
+            if (!host.empty()) { bw->app->zoomPerDomain.erase(host); saveSettings(bw->app); }
             return TRUE;
         }
     }
@@ -4705,6 +4747,8 @@ static gboolean onGlobalKey(GtkEventControllerKey*, guint keyval, guint,
         if (keyval == GDK_KEY_Escape) {
             if (bw->findbarVisible) { closeFindbar(bw); return TRUE; }
             if (bw->inspectorMode)  { closeInspector(bw); return TRUE; }
+            // Salir de modo kiosk con Escape
+            if (bw->kioskMode) { toggleKiosk(bw); return TRUE; }
             // Salir de pantalla completa con Escape
             if (gtk_window_is_fullscreen(GTK_WINDOW(bw->window))) {
                 gtk_window_unfullscreen(GTK_WINDOW(bw->window));
@@ -4712,6 +4756,8 @@ static gboolean onGlobalKey(GtkEventControllerKey*, guint keyval, guint,
             }
         }
         if (keyval == GDK_KEY_F11) {
+            // Si estamos en kiosk, F11 también lo desactiva (restaura barras + unfullscreen)
+            if (bw->kioskMode) { toggleKiosk(bw); return TRUE; }
             if (gtk_window_is_fullscreen(GTK_WINDOW(bw->window)))
                 gtk_window_unfullscreen(GTK_WINDOW(bw->window));
             else
@@ -4732,10 +4778,23 @@ static void toggleFindbar(BrowserWindow* bw) {
     else { gtk_widget_set_visible(GTK_WIDGET(bw->findbarBox), TRUE); bw->findbarVisible = true; gtk_widget_grab_focus(GTK_WIDGET(bw->findEntry)); }
 }
 
+static void toggleKiosk(BrowserWindow* bw) {
+    bw->kioskMode = !bw->kioskMode;
+    gtk_widget_set_visible(bw->tabbarRowWidget,    !bw->kioskMode);
+    gtk_widget_set_visible(bw->navBoxWidget,        !bw->kioskMode);
+    gtk_widget_set_visible(bw->statusbarBoxWidget,  !bw->kioskMode);
+    // También ocultar findbar si estaba visible
+    if (bw->kioskMode && bw->findbarVisible) closeFindbar(bw);
+    // Poner/quitar fullscreen de la ventana
+    if (bw->kioskMode)
+        gtk_window_fullscreen(GTK_WINDOW(bw->window));
+    else
+        gtk_window_unfullscreen(GTK_WINDOW(bw->window));
+}
+
 static void toggleTerminal(BrowserWindow* bw) {
     if (bw->inspectorMode) {
-        gtk_label_set_text(bw->statusbar, "Cierra el inspector primero (Esc)");
-        g_timeout_add(2000, [](gpointer p) -> gboolean { gtk_label_set_text(GTK_LABEL(p), ""); return FALSE; }, bw->statusbar);
+        statusMsg(bw, "Cierra el inspector primero (Esc)");
         return;
     }
     if (bw->terminalVisible) {
@@ -4928,7 +4987,7 @@ static BrowserWindow* buildWindow(GtkApplication* gapp, AppData* app) {
     g_bw = bw;
 
     bw->window = GTK_APPLICATION_WINDOW(gtk_application_window_new(gapp));
-    gtk_window_set_title(GTK_WINDOW(bw->window), "I4 Froez");
+    gtk_window_set_title(GTK_WINDOW(bw->window), "NECEAP");
     gtk_window_set_default_size(GTK_WINDOW(bw->window), 1280, 800);
 
     GtkBox* root = GTK_BOX(gtk_box_new(GTK_ORIENTATION_VERTICAL, 0));
@@ -4966,12 +5025,11 @@ static BrowserWindow* buildWindow(GtkApplication* gapp, AppData* app) {
         const char* t = webkit_web_view_get_title(currentWv(bw2));
         if (bw2->app->isBookmarked(uri)) {
             bw2->app->removeBookmark(uri); gtk_button_set_label(bw2->bookmarkStar, "◇");
-            gtk_label_set_text(bw2->statusbar, "Marcador eliminado");
+            statusMsg(bw2, "Marcador eliminado");
         } else {
             bw2->app->addBookmark(uri, t ? t : uri); gtk_button_set_label(bw2->bookmarkStar, "◆");
-            gtk_label_set_text(bw2->statusbar, "Marcador guardado");
+            statusMsg(bw2, "Marcador guardado");
         }
-        g_timeout_add(2000, [](gpointer q) -> gboolean { gtk_label_set_text(GTK_LABEL(q), ""); return FALSE; }, bw2->statusbar);
         // Refrescar sidebar si está mostrando marcadores
         if (bw2->sidebarMode == "bookmarks") showSidebar(bw2, "bookmarks");
     }), bw);
@@ -5033,7 +5091,7 @@ static BrowserWindow* buildWindow(GtkApplication* gapp, AppData* app) {
     addMenuItem("JS  Consola JS",     "Consola JavaScript (Ctrl+Alt+J)",
         [](GtkButton*, gpointer p){ auto* b=static_cast<BrowserWindow*>(p); gtk_popover_popdown(GTK_POPOVER(b->menuPopover)); toggleJsConsole(b); });
     addMenuItem("PE  Perú",           "República del Perú",
-        [](GtkButton*, gpointer p){ auto* b=static_cast<BrowserWindow*>(p); gtk_popover_popdown(GTK_POPOVER(b->menuPopover)); webkit_web_view_load_uri(currentWv(b), "froez://peru"); });
+        [](GtkButton*, gpointer p){ auto* b=static_cast<BrowserWindow*>(p); gtk_popover_popdown(GTK_POPOVER(b->menuPopover)); webkit_web_view_load_uri(currentWv(b), "neceap://peru"); });
 
     // Separador
     GtkWidget* sep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
@@ -5045,8 +5103,7 @@ static BrowserWindow* buildWindow(GtkApplication* gapp, AppData* app) {
             gtk_popover_popdown(GTK_POPOVER(b->menuPopover));
             b->app->httpsOnly = !b->app->httpsOnly;
             saveSettings(b->app);
-            gtk_label_set_text(b->statusbar, b->app->httpsOnly ? "HTTPS-Only: activado" : "HTTPS-Only: desactivado");
-            g_timeout_add(2500, [](gpointer q)->gboolean{ gtk_label_set_text(GTK_LABEL(q),""); return FALSE; }, b->statusbar);
+            statusMsg(b, b->app->httpsOnly ? "HTTPS-Only: activado" : "HTTPS-Only: desactivado", 2500);
         });
     addMenuItem("⊘  Bloquear JS",    "Activar/desactivar JavaScript",
         [](GtkButton*, gpointer p){
@@ -5057,13 +5114,12 @@ static BrowserWindow* buildWindow(GtkApplication* gapp, AppData* app) {
             // Aplicar a la pestaña actual
             WebKitSettings* s = webkit_web_view_get_settings(currentWv(b));
             webkit_settings_set_enable_javascript(s, !b->app->jsBlocked);
-            gtk_label_set_text(b->statusbar, b->app->jsBlocked ? "JavaScript: bloqueado" : "JavaScript: habilitado");
-            g_timeout_add(2500, [](gpointer q)->gboolean{ gtk_label_set_text(GTK_LABEL(q),""); return FALSE; }, b->statusbar);
+            statusMsg(b, b->app->jsBlocked ? "JavaScript: bloqueado" : "JavaScript: habilitado", 2500);
         });
     addMenuItem("⚒  Ajustes",        "Abrir ajustes",
-        [](GtkButton*, gpointer p){ auto* b=static_cast<BrowserWindow*>(p); gtk_popover_popdown(GTK_POPOVER(b->menuPopover)); webkit_web_view_load_uri(currentWv(b), "froez://settings"); });
+        [](GtkButton*, gpointer p){ auto* b=static_cast<BrowserWindow*>(p); gtk_popover_popdown(GTK_POPOVER(b->menuPopover)); webkit_web_view_load_uri(currentWv(b), "neceap://settings"); });
     addMenuItem("⚙  Ajustes","Abrir ajustes",
-        [](GtkButton*, gpointer p){ auto* b=static_cast<BrowserWindow*>(p); gtk_popover_popdown(GTK_POPOVER(b->menuPopover)); webkit_web_view_load_uri(currentWv(b), "froez://settings"); });
+        [](GtkButton*, gpointer p){ auto* b=static_cast<BrowserWindow*>(p); gtk_popover_popdown(GTK_POPOVER(b->menuPopover)); webkit_web_view_load_uri(currentWv(b), "neceap://settings"); });
 
     gtk_popover_set_child(GTK_POPOVER(popover), GTK_WIDGET(menuBox));
 
@@ -5241,6 +5297,11 @@ static BrowserWindow* buildWindow(GtkApplication* gapp, AppData* app) {
     gtk_box_append(statusbarBox, GTK_WIDGET(bw->statusbar));
     gtk_box_append(statusbarBox, GTK_WIDGET(bw->dlProgress));
 
+    // Guardar referencias para el modo kiosk
+    bw->tabbarRowWidget   = GTK_WIDGET(tabbarRow);
+    bw->navBoxWidget      = GTK_WIDGET(navBox);
+    bw->statusbarBoxWidget = GTK_WIDGET(statusbarBox);
+
     gtk_box_append(root, GTK_WIDGET(tabbarRow));
     gtk_box_append(root, GTK_WIDGET(navBox));
     gtk_box_append(root, GTK_WIDGET(bw->contentArea));
@@ -5254,11 +5315,11 @@ static BrowserWindow* buildWindow(GtkApplication* gapp, AppData* app) {
     g_signal_connect(globalKey, "key-pressed", G_CALLBACK(onGlobalKey), bw);
     gtk_widget_add_controller(GTK_WIDGET(bw->window), GTK_EVENT_CONTROLLER(globalKey));
 
-    termPrint(bw, "I4 Froez v0.8  —  escribe 'help' para ver los comandos \n");
+    termPrint(bw, "NECEAP v0.8  —  escribe 'help' para ver los comandos \n");
     termPrompt(bw);
 
     // Inicializar consola JS
-    jsPrint(bw, "I4 Froez JS Console  —  Ctrl+L para limpiar \n");
+    jsPrint(bw, "NECEAP JS Console  —  Ctrl+L para limpiar \n");
     jsPrompt(bw);
 
     return bw;
@@ -5299,7 +5360,7 @@ static void switchProfile(GtkApplication* app, BrowserProfile newProfile) {
 
     // Cargar datos del nuevo perfil
     g_app = AppData{};
-    g_app.homeUri   = "froez://newtab";
+    g_app.homeUri   = "neceap://newtab";
     g_app.history   = loadJson(historyFile(),   json::array());
     g_app.bookmarks = loadJson(bookmarksFile(), json::array());
     loadSettings(&g_app);
@@ -5311,7 +5372,7 @@ static void switchProfile(GtkApplication* app, BrowserProfile newProfile) {
 
     // Mostrar badge del perfil activo en el título de la ventana
     std::string profName = profileDisplayName(g_activeProfile);
-    std::string title = "I4 Froez [" + profName + "]";
+    std::string title = "NECEAP [" + profName + "]";
     gtk_window_set_title(GTK_WINDOW(bw->window), title.c_str());
 
     gtk_window_present(GTK_WINDOW(bw->window));
@@ -5329,9 +5390,9 @@ static void onActivate(GtkApplication* app, gpointer) {
     // 3. Inicializar clave maestra del perfil
     initMasterKey(app);
 
-    // 4. Registrar esquema froez:// (debe hacerse antes de crear WebViews)
+    // 4. Registrar esquema neceap:// (debe hacerse antes de crear WebViews)
     WebKitWebContext* ctx = webkit_web_context_get_default();
-    webkit_web_context_register_uri_scheme(ctx, "froez", froezSchemeHandler, nullptr, nullptr);
+    webkit_web_context_register_uri_scheme(ctx, "neceap", neceapSchemeHandler, nullptr, nullptr);
 
     // 5. Cargar CSS global
     GtkCssProvider* provider = gtk_css_provider_new();
@@ -5342,7 +5403,7 @@ static void onActivate(GtkApplication* app, gpointer) {
     g_object_unref(provider);
 
     // 6. Inicializar datos del perfil
-    g_app.homeUri   = "froez://newtab";
+    g_app.homeUri   = "neceap://newtab";
     g_app.history   = loadJson(historyFile(),   json::array());
     g_app.bookmarks = loadJson(bookmarksFile(), json::array());
     loadSettings(&g_app);
@@ -5354,7 +5415,7 @@ static void onActivate(GtkApplication* app, gpointer) {
 
     // Mostrar perfil activo en el título
     gtk_window_set_title(GTK_WINDOW(bw->window),
-        ("I4 Froez [" + profileDisplayName(g_activeProfile) + "]").c_str());
+        ("NECEAP [" + profileDisplayName(g_activeProfile) + "]").c_str());
 
     gtk_window_present(GTK_WINDOW(bw->window));
 }
@@ -5367,7 +5428,7 @@ int main(int argc, char** argv) {
     g_setenv("GTK_A11Y", "none", FALSE);
 
     GtkApplication* app = gtk_application_new(
-        "com.freetazapablo.i4froez",
+        "com.neceap.browser",
         G_APPLICATION_DEFAULT_FLAGS
     );
     g_signal_connect(app, "activate", G_CALLBACK(onActivate), nullptr);
