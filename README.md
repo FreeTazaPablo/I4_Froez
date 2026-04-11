@@ -124,9 +124,9 @@ Los datos de cada perfil se almacenan en:
 
 ## Significado de Neceap
 
-Neceap significa literalmente
+Neceap significa literalmente:
 
-# Navegador En C++ Enfocado A Privacidad
+*Navegador En C++ Enfocado A Privacidad*
 
 ## Creditos
 
